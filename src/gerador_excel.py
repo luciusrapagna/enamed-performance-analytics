@@ -1,274 +1,221 @@
 import os
-from docx import Document
-from docx.shared import Inches
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+import pandas as pd
+
+from openpyxl import load_workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
 
-def adicionar_titulo(documento, texto):
-    titulo = documento.add_heading(texto, level=1)
-    titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+def ajustar_largura_colunas(ws):
+    for coluna in ws.columns:
+        maior_tamanho = 0
+        letra_coluna = get_column_letter(coluna[0].column)
+
+        for celula in coluna:
+            if celula.value is not None:
+                maior_tamanho = max(maior_tamanho, len(str(celula.value)))
+
+        ws.column_dimensions[letra_coluna].width = min(maior_tamanho + 2, 45)
 
 
-def adicionar_subtitulo(documento, texto):
-    documento.add_heading(texto, level=2)
+def formatar_cabecalho(ws):
+    preenchimento = PatternFill(
+        start_color="1F4E79",
+        end_color="1F4E79",
+        fill_type="solid"
+    )
+
+    fonte = Font(color="FFFFFF", bold=True)
+
+    for celula in ws[1]:
+        celula.fill = preenchimento
+        celula.font = fonte
+        celula.alignment = Alignment(horizontal="center", vertical="center")
 
 
-def adicionar_paragrafo(documento, texto):
-    paragrafo = documento.add_paragraph()
-    paragrafo.add_run(texto)
-    paragrafo.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+def aplicar_bordas(ws):
+    borda = Border(
+        left=Side(style="thin", color="D9E2F3"),
+        right=Side(style="thin", color="D9E2F3"),
+        top=Side(style="thin", color="D9E2F3"),
+        bottom=Side(style="thin", color="D9E2F3")
+    )
+
+    for linha in ws.iter_rows():
+        for celula in linha:
+            celula.border = borda
+            celula.alignment = Alignment(vertical="center")
 
 
-def adicionar_tabela(documento, df, titulo):
-    adicionar_subtitulo(documento, titulo)
+def formatar_abas_excel(caminho_excel):
+    wb = load_workbook(caminho_excel)
 
-    if df is None or df.empty:
-        adicionar_paragrafo(documento, "Não há dados disponíveis para esta seção.")
+    for ws in wb.worksheets:
+        formatar_cabecalho(ws)
+        aplicar_bordas(ws)
+        ajustar_largura_colunas(ws)
+        ws.freeze_panes = "A2"
+
+    wb.save(caminho_excel)
+
+
+def destacar_risco(caminho_excel, config):
+    wb = load_workbook(caminho_excel)
+
+    if "Estudantes em Risco" not in wb.sheetnames:
+        wb.save(caminho_excel)
         return
 
-    tabela = documento.add_table(rows=1, cols=len(df.columns))
-    tabela.style = "Table Grid"
+    ws = wb["Estudantes em Risco"]
 
-    hdr_cells = tabela.rows[0].cells
+    cor_moderado = config["excel"]["cor_risco_moderado"]
+    cor_elevado = config["excel"]["cor_risco_elevado"]
 
-    for i, coluna in enumerate(df.columns):
-        hdr_cells[i].text = str(coluna)
+    headers = [cell.value for cell in ws[1]]
 
-    for _, linha in df.iterrows():
-        row_cells = tabela.add_row().cells
-        for i, valor in enumerate(linha):
-            row_cells[i].text = str(valor)
+    if "classificacao_risco" not in headers:
+        wb.save(caminho_excel)
+        return
 
-    documento.add_paragraph("Fonte: ENAMED Performance Analytics.")
+    col_risco = headers.index("classificacao_risco") + 1
+
+    for row in range(2, ws.max_row + 1):
+        valor = ws.cell(row=row, column=col_risco).value
+
+        if valor == "Risco moderado":
+            fill = PatternFill(
+                start_color=cor_moderado,
+                end_color=cor_moderado,
+                fill_type="solid"
+            )
+        elif valor == "Risco elevado":
+            fill = PatternFill(
+                start_color=cor_elevado,
+                end_color=cor_elevado,
+                fill_type="solid"
+            )
+        else:
+            fill = None
+
+        if fill:
+            for col in range(1, ws.max_column + 1):
+                ws.cell(row=row, column=col).fill = fill
+
+    wb.save(caminho_excel)
 
 
-def adicionar_figura(documento, caminho_figura, legenda):
-    if caminho_figura and os.path.exists(caminho_figura):
-        documento.add_picture(caminho_figura, width=Inches(6))
-        paragrafo = documento.add_paragraph(legenda)
-        paragrafo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+def destacar_bonificacao(caminho_excel, config):
+    wb = load_workbook(caminho_excel)
+
+    if "Bonificacao" not in wb.sheetnames:
+        wb.save(caminho_excel)
+        return
+
+    ws = wb["Bonificacao"]
+
+    cor_bonus = config["excel"]["cor_bonus"]
+
+    headers = [cell.value for cell in ws[1]]
+
+    if "bonus_total" not in headers:
+        wb.save(caminho_excel)
+        return
+
+    col_bonus = headers.index("bonus_total") + 1
+
+    for row in range(2, ws.max_row + 1):
+        valor = ws.cell(row=row, column=col_bonus).value
+
+        try:
+            valor_float = float(valor)
+        except Exception:
+            valor_float = 0
+
+        if valor_float > 0:
+            fill = PatternFill(
+                start_color=cor_bonus,
+                end_color=cor_bonus,
+                fill_type="solid"
+            )
+
+            for col in range(1, ws.max_column + 1):
+                ws.cell(row=row, column=col).fill = fill
+
+    wb.save(caminho_excel)
 
 
-def gerar_texto_resumo(estatisticas, config):
-    instituicao = config.get("instituicao", "Instituição de Ensino Superior")
+def gerar_excel(resultados, pasta_execucao, config):
+    pasta_excel = os.path.join(pasta_execucao, "excel")
+    os.makedirs(pasta_excel, exist_ok=True)
 
-    return (
-        f"O presente relatório apresenta a análise dos resultados de simulados e/ou provas "
-        f"do ENAMED aplicados aos estudantes de Medicina da {instituicao}. "
-        f"A base analisada contemplou {estatisticas['total_estudantes']} estudantes. "
-        f"A média geral de acertos foi de {estatisticas['media_acertos']} questões, "
-        f"com mediana de {estatisticas['mediana_acertos']}, desvio-padrão de "
-        f"{estatisticas['desvio_padrao_acertos']} e média percentual de "
-        f"{estatisticas['media_percentual']}%. Esses indicadores permitem uma leitura "
-        f"institucional do desempenho acadêmico, subsidiando ações do NDE, da coordenação "
-        f"do curso, do colegiado e dos processos de melhoria contínua."
+    caminho_excel = os.path.join(
+        pasta_excel,
+        "enamed_performance_analytics_resultados.xlsx"
     )
 
-
-def gerar_interpretacao_turmas(tabela_turma):
-    if tabela_turma.empty:
-        return "Não foram identificados dados suficientes para análise por turma."
-
-    melhor = tabela_turma.sort_values("media_percentual", ascending=False).iloc[0]
-    menor = tabela_turma.sort_values("media_percentual", ascending=True).iloc[0]
-
-    return (
-        f"A análise por turma evidencia variação no desempenho médio entre os grupos avaliados. "
-        f"A turma com maior média percentual foi {melhor['turma']}, com "
-        f"{melhor['media_percentual']}% de acertos. A menor média percentual foi observada "
-        f"na turma {menor['turma']}, com {menor['media_percentual']}% de acertos. "
-        f"Esses resultados permitem identificar desigualdades formativas, necessidades de "
-        f"intervenção pedagógica e oportunidades de acompanhamento longitudinal."
-    )
-
-
-def gerar_interpretacao_ciclos(tabela_ciclo):
-    if tabela_ciclo.empty:
-        return "Não foram identificados dados suficientes para análise por ciclo formativo."
-
-    melhor = tabela_ciclo.sort_values("media_percentual", ascending=False).iloc[0]
-
-    return (
-        f"A análise por ciclos formativos permite observar a progressão cognitiva dos estudantes "
-        f"ao longo da formação médica. O ciclo com maior média percentual foi "
-        f"{melhor['ciclo']}, com {melhor['media_percentual']}% de acertos. "
-        f"Essa leitura contribui para avaliar a coerência entre matriz curricular, desenvolvimento "
-        f"de competências e desempenho nos eixos avaliativos do ENAMED."
-    )
-
-
-def gerar_interpretacao_areas(tabela_areas):
-    if tabela_areas is None or tabela_areas.empty:
-        return (
-            "A análise por grandes áreas não foi realizada porque as colunas específicas "
-            "das áreas do ENAMED não foram identificadas na planilha."
+    with pd.ExcelWriter(caminho_excel, engine="openpyxl") as writer:
+        resultados["dados_processados"].to_excel(
+            writer,
+            sheet_name="Dados Processados",
+            index=False
         )
 
-    maior = tabela_areas.sort_values("media_percentual", ascending=False).iloc[0]
-    menor = tabela_areas.sort_values("media_percentual", ascending=True).iloc[0]
-
-    return (
-        f"A análise por grandes áreas do ENAMED demonstrou maior desempenho médio em "
-        f"{maior['area']}, com {maior['media_percentual']}% de acertos, enquanto a menor "
-        f"média foi observada em {menor['area']}, com {menor['media_percentual']}%. "
-        f"Esses achados permitem direcionar estratégias de reforço, revisão curricular, "
-        f"monitoramento de competências e planejamento de intervenções pedagógicas específicas."
-    )
-
-
-def gerar_interpretacao_risco(tabela_risco):
-    if tabela_risco.empty:
-        return "Não foram identificados estudantes em risco."
-
-    contagem = tabela_risco["classificacao_risco"].value_counts().to_dict()
-
-    moderado = contagem.get("Risco pedagógico moderado", 0)
-    critico = contagem.get("Risco pedagógico crítico", 0)
-
-    return (
-        f"A análise de risco pedagógico identificou {moderado} estudantes em risco moderado "
-        f"e {critico} estudantes em risco crítico. Essa classificação considera o desempenho "
-        f"individual em relação à média da própria turma, permitindo uma leitura contextualizada "
-        f"do rendimento acadêmico e favorecendo ações de tutoria, monitoria, revisão de conteúdos "
-        f"e acompanhamento pedagógico individualizado."
-    )
-
-
-def gerar_plano_acao():
-    return (
-        "Recomenda-se que os resultados sejam apresentados e discutidos em reunião do NDE "
-        "e do colegiado do curso, com registro em ata. As turmas com menor desempenho relativo "
-        "devem receber planejamento específico de reforço pedagógico, enquanto os estudantes "
-        "classificados em risco devem ser acompanhados por estratégias de tutoria, monitoria "
-        "e orientação acadêmica. As áreas com menor desempenho médio devem subsidiar ações "
-        "de revisão curricular, oficinas de aprendizagem, análise de itens e alinhamento entre "
-        "competências previstas no PPC e práticas avaliativas."
-    )
-
-
-def gerar_word(resultados, caminhos_graficos, pasta_execucao, config):
-    pasta_word = os.path.join(pasta_execucao, "word")
-    os.makedirs(pasta_word, exist_ok=True)
-
-    caminho_word = os.path.join(
-        pasta_word,
-        "relatorio_enamed_performance_analytics.docx"
-    )
-
-    documento = Document()
-
-    adicionar_titulo(documento, config.get("nome_relatorio", "Relatório ENAMED Performance Analytics"))
-
-    adicionar_paragrafo(
-        documento,
-        "Sistema institucional para análise de desempenho em simulados e provas do ENAMED em escolas médicas."
-    )
-
-    adicionar_subtitulo(documento, "1. Resumo executivo")
-    adicionar_paragrafo(
-        documento,
-        gerar_texto_resumo(resultados["estatisticas_gerais"], config)
-    )
-
-    adicionar_subtitulo(documento, "2. Estatísticas gerais")
-    adicionar_tabela(
-        documento,
-        __import__("pandas").DataFrame([resultados["estatisticas_gerais"]]),
-        "Tabela 1 – Estatísticas gerais do desempenho"
-    )
-
-    adicionar_subtitulo(documento, "3. Desempenho por turma")
-    adicionar_paragrafo(
-        documento,
-        gerar_interpretacao_turmas(resultados["analise_por_turma"])
-    )
-    adicionar_tabela(
-        documento,
-        resultados["analise_por_turma"],
-        "Tabela 2 – Indicadores de desempenho por turma"
-    )
-
-    if caminhos_graficos.get("media_turma"):
-        adicionar_figura(
-            documento,
-            caminhos_graficos["media_turma"][0],
-            "Figura 1 – Média percentual de acertos por turma."
+        pd.DataFrame([resultados["estatisticas_gerais"]]).to_excel(
+            writer,
+            sheet_name="Estatisticas Gerais",
+            index=False
         )
 
-    adicionar_subtitulo(documento, "4. Desempenho por ciclo formativo")
-    adicionar_paragrafo(
-        documento,
-        gerar_interpretacao_ciclos(resultados["analise_por_ciclo"])
-    )
-    adicionar_tabela(
-        documento,
-        resultados["analise_por_ciclo"],
-        "Tabela 3 – Indicadores de desempenho por ciclo formativo"
-    )
-
-    if caminhos_graficos.get("media_ciclo"):
-        adicionar_figura(
-            documento,
-            caminhos_graficos["media_ciclo"][0],
-            "Figura 2 – Média percentual de acertos por ciclo formativo."
+        resultados["ranking_geral"].to_excel(
+            writer,
+            sheet_name="Ranking Geral",
+            index=False
         )
 
-    adicionar_subtitulo(documento, "5. Grandes áreas do ENAMED")
-    adicionar_paragrafo(
-        documento,
-        gerar_interpretacao_areas(resultados["analise_por_areas"])
-    )
-    adicionar_tabela(
-        documento,
-        resultados["analise_por_areas"],
-        "Tabela 4 – Desempenho por grandes áreas do ENAMED"
-    )
-
-    if caminhos_graficos.get("areas"):
-        adicionar_figura(
-            documento,
-            caminhos_graficos["areas"][0],
-            "Figura 3 – Desempenho médio por grande área do ENAMED."
+        resultados["ranking_por_turma"].to_excel(
+            writer,
+            sheet_name="Ranking por Turma",
+            index=False
         )
 
-    adicionar_subtitulo(documento, "6. Estudantes em risco pedagógico")
-    adicionar_paragrafo(
-        documento,
-        gerar_interpretacao_risco(resultados["estudantes_em_risco"])
-    )
-    adicionar_tabela(
-        documento,
-        resultados["estudantes_em_risco"],
-        "Tabela 5 – Estudantes classificados por risco pedagógico"
-    )
-
-    if caminhos_graficos.get("risco"):
-        adicionar_figura(
-            documento,
-            caminhos_graficos["risco"][0],
-            "Figura 4 – Distribuição dos estudantes por classificação de risco."
+        resultados["analise_por_turma"].to_excel(
+            writer,
+            sheet_name="Analise por Turma",
+            index=False
         )
 
-    adicionar_subtitulo(documento, "7. Bonificação acadêmica")
-    adicionar_paragrafo(
-        documento,
-        "A bonificação acadêmica foi calculada automaticamente com base no desempenho percentual acima da média da própria turma, conforme as regras parametrizadas no arquivo config.json."
-    )
-    adicionar_tabela(
-        documento,
-        resultados["bonificacao"],
-        "Tabela 6 – Bonificação acadêmica por estudante"
-    )
+        resultados["analise_por_ciclo"].to_excel(
+            writer,
+            sheet_name="Analise por Ciclo",
+            index=False
+        )
 
-    adicionar_subtitulo(documento, "8. Plano de ação pedagógico")
-    adicionar_paragrafo(documento, gerar_plano_acao())
+        resultados["analise_por_areas"].to_excel(
+            writer,
+            sheet_name="Analise por Areas",
+            index=False
+        )
 
-    adicionar_subtitulo(documento, "9. Encaminhamentos institucionais")
-    adicionar_paragrafo(
-        documento,
-        "Os resultados produzidos pelo ENAMED Performance Analytics devem ser utilizados como evidência institucional para planejamento pedagógico, acompanhamento da aprendizagem, análise de progressão formativa, qualificação das avaliações internas e apoio aos processos de gestão acadêmica baseada em evidências."
-    )
+        resultados["analise_areas_por_turma"].to_excel(
+            writer,
+            sheet_name="Areas por Turma",
+            index=False
+        )
 
-    documento.save(caminho_word)
+        resultados["estudantes_em_risco"].to_excel(
+            writer,
+            sheet_name="Estudantes em Risco",
+            index=False
+        )
 
-    return caminho_word
+        resultados["bonificacao"].to_excel(
+            writer,
+            sheet_name="Bonificacao",
+            index=False
+        )
+
+    formatar_abas_excel(caminho_excel)
+    destacar_risco(caminho_excel, config)
+    destacar_bonificacao(caminho_excel, config)
+
+    return caminho_excel

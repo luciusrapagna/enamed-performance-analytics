@@ -1,4 +1,6 @@
 import os
+import pandas as pd
+
 from docx import Document
 from docx.shared import Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -29,15 +31,13 @@ def adicionar_tabela(documento, df, titulo):
     tabela = documento.add_table(rows=1, cols=len(df.columns))
     tabela.style = "Table Grid"
 
-    hdr_cells = tabela.rows[0].cells
-
     for i, coluna in enumerate(df.columns):
-        hdr_cells[i].text = str(coluna)
+        tabela.rows[0].cells[i].text = str(coluna)
 
     for _, linha in df.iterrows():
-        row_cells = tabela.add_row().cells
+        cells = tabela.add_row().cells
         for i, valor in enumerate(linha):
-            row_cells[i].text = str(valor)
+            cells[i].text = str(valor)
 
     documento.add_paragraph("Fonte: ENAMED Performance Analytics.")
 
@@ -51,17 +51,18 @@ def adicionar_figura(documento, caminho_figura, legenda):
 
 def gerar_texto_resumo(estatisticas, config):
     instituicao = config.get("instituicao", "Instituição de Ensino Superior")
+    numero_questoes = config.get("numero_questoes", 120)
 
     return (
         f"O presente relatório apresenta a análise dos resultados de simulados e/ou provas "
         f"do ENAMED aplicados aos estudantes de Medicina da {instituicao}. "
-        f"A base analisada contemplou {estatisticas['total_estudantes']} estudantes. "
+        f"A prova analisada foi considerada com {numero_questoes} questões. "
+        f"A base contemplou {estatisticas['total_estudantes']} estudantes. "
         f"A média geral de acertos foi de {estatisticas['media_acertos']} questões, "
         f"com mediana de {estatisticas['mediana_acertos']}, desvio-padrão de "
         f"{estatisticas['desvio_padrao_acertos']} e média percentual de "
-        f"{estatisticas['media_percentual']}%. Esses indicadores permitem uma leitura "
-        f"institucional do desempenho acadêmico, subsidiando ações do NDE, da coordenação "
-        f"do curso, do colegiado e dos processos de melhoria contínua."
+        f"{estatisticas['media_percentual']}%. Esses indicadores subsidiam ações "
+        f"do NDE, da coordenação do curso, do colegiado e dos processos de melhoria contínua."
     )
 
 
@@ -73,46 +74,40 @@ def gerar_interpretacao_turmas(tabela_turma):
     menor = tabela_turma.sort_values("media_percentual", ascending=True).iloc[0]
 
     return (
-        f"A análise por turma evidencia variação no desempenho médio entre os grupos avaliados. "
         f"A turma com maior média percentual foi {melhor['turma']}, com "
-        f"{melhor['media_percentual']}% de acertos. A menor média percentual foi observada "
-        f"na turma {menor['turma']}, com {menor['media_percentual']}% de acertos. "
-        f"Esses resultados permitem identificar desigualdades formativas, necessidades de "
-        f"intervenção pedagógica e oportunidades de acompanhamento longitudinal."
+        f"{melhor['media_percentual']}% de acertos. A menor média percentual foi "
+        f"observada na turma {menor['turma']}, com {menor['media_percentual']}%. "
+        f"Esses resultados permitem identificar desigualdades formativas e orientar "
+        f"intervenções pedagógicas específicas."
     )
 
 
 def gerar_interpretacao_ciclos(tabela_ciclo):
     if tabela_ciclo.empty:
-        return "Não foram identificados dados suficientes para análise por ciclo formativo."
+        return "Não foram identificados dados suficientes para análise por ciclo."
 
     melhor = tabela_ciclo.sort_values("media_percentual", ascending=False).iloc[0]
 
     return (
-        f"A análise por ciclos formativos permite observar a progressão cognitiva dos estudantes "
-        f"ao longo da formação médica. O ciclo com maior média percentual foi "
+        f"A análise por ciclos formativos indicou maior desempenho médio no ciclo "
         f"{melhor['ciclo']}, com {melhor['media_percentual']}% de acertos. "
-        f"Essa leitura contribui para avaliar a coerência entre matriz curricular, desenvolvimento "
-        f"de competências e desempenho nos eixos avaliativos do ENAMED."
+        f"Essa leitura favorece o acompanhamento longitudinal da progressão cognitiva."
     )
 
 
 def gerar_interpretacao_areas(tabela_areas):
     if tabela_areas is None or tabela_areas.empty:
-        return (
-            "A análise por grandes áreas não foi realizada porque as colunas específicas "
-            "das áreas do ENAMED não foram identificadas na planilha."
-        )
+        return "A análise por grandes áreas não foi realizada por ausência de colunas compatíveis."
 
-    maior = tabela_areas.sort_values("media_percentual", ascending=False).iloc[0]
-    menor = tabela_areas.sort_values("media_percentual", ascending=True).iloc[0]
+    maior = tabela_areas.sort_values("media_acertos", ascending=False).iloc[0]
+    menor = tabela_areas.sort_values("media_acertos", ascending=True).iloc[0]
 
     return (
-        f"A análise por grandes áreas do ENAMED demonstrou maior desempenho médio em "
-        f"{maior['area']}, com {maior['media_percentual']}% de acertos, enquanto a menor "
-        f"média foi observada em {menor['area']}, com {menor['media_percentual']}%. "
-        f"Esses achados permitem direcionar estratégias de reforço, revisão curricular, "
-        f"monitoramento de competências e planejamento de intervenções pedagógicas específicas."
+        f"A análise por grandes áreas indicou maior desempenho médio em {maior['area']}, "
+        f"com média de {maior['media_acertos']} acertos. A menor média foi observada "
+        f"em {menor['area']}, com {menor['media_acertos']} acertos. "
+        f"Esses achados podem direcionar revisões curriculares, oficinas de reforço "
+        f"e análise pedagógica dos eixos avaliativos do ENAMED."
     )
 
 
@@ -122,27 +117,39 @@ def gerar_interpretacao_risco(tabela_risco):
 
     contagem = tabela_risco["classificacao_risco"].value_counts().to_dict()
 
-    moderado = contagem.get("Risco pedagógico moderado", 0)
-    critico = contagem.get("Risco pedagógico crítico", 0)
+    moderado = contagem.get("Risco moderado", 0)
+    elevado = contagem.get("Risco elevado", 0)
 
     return (
         f"A análise de risco pedagógico identificou {moderado} estudantes em risco moderado "
-        f"e {critico} estudantes em risco crítico. Essa classificação considera o desempenho "
-        f"individual em relação à média da própria turma, permitindo uma leitura contextualizada "
-        f"do rendimento acadêmico e favorecendo ações de tutoria, monitoria, revisão de conteúdos "
-        f"e acompanhamento pedagógico individualizado."
+        f"e {elevado} estudantes em risco elevado. Foram considerados em risco os estudantes "
+        f"abaixo da média da própria turma: até 10% abaixo da média foram classificados como "
+        f"risco moderado; 11% ou mais abaixo da média foram classificados como risco elevado."
+    )
+
+
+def gerar_interpretacao_bonus(tabela_bonus):
+    if tabela_bonus.empty:
+        return "Não foram identificados estudantes elegíveis à bonificação."
+
+    elegiveis = tabela_bonus[tabela_bonus["bonus_total"] > 0]
+
+    return (
+        f"Foram identificados {len(elegiveis)} estudantes elegíveis à bonificação acadêmica. "
+        f"Estudantes com desempenho de 1% a 9,99% acima da média da turma recebem 0,1 ponto "
+        f"em uma disciplina; de 10% a 19,99%, recebem 0,2 pontos em duas disciplinas "
+        f"(0,4 no total); e com 20% ou mais acima da média recebem 0,3 pontos em três "
+        f"disciplinas (0,9 no total)."
     )
 
 
 def gerar_plano_acao():
     return (
-        "Recomenda-se que os resultados sejam apresentados e discutidos em reunião do NDE "
-        "e do colegiado do curso, com registro em ata. As turmas com menor desempenho relativo "
-        "devem receber planejamento específico de reforço pedagógico, enquanto os estudantes "
-        "classificados em risco devem ser acompanhados por estratégias de tutoria, monitoria "
-        "e orientação acadêmica. As áreas com menor desempenho médio devem subsidiar ações "
-        "de revisão curricular, oficinas de aprendizagem, análise de itens e alinhamento entre "
-        "competências previstas no PPC e práticas avaliativas."
+        "Recomenda-se que os resultados sejam discutidos em reunião do NDE e do colegiado, "
+        "com registro em ata. As turmas com menor desempenho devem receber ações de reforço "
+        "pedagógico. Os estudantes em risco devem ser acompanhados por tutoria, monitoria "
+        "e orientação acadêmica. As áreas com menor desempenho devem subsidiar revisão "
+        "curricular, oficinas de aprendizagem e análise de itens."
     )
 
 
@@ -157,7 +164,10 @@ def gerar_word(resultados, caminhos_graficos, pasta_execucao, config):
 
     documento = Document()
 
-    adicionar_titulo(documento, config.get("nome_relatorio", "Relatório ENAMED Performance Analytics"))
+    adicionar_titulo(
+        documento,
+        config.get("nome_relatorio", "Relatório ENAMED Performance Analytics")
+    )
 
     adicionar_paragrafo(
         documento,
@@ -170,22 +180,22 @@ def gerar_word(resultados, caminhos_graficos, pasta_execucao, config):
         gerar_texto_resumo(resultados["estatisticas_gerais"], config)
     )
 
-    adicionar_subtitulo(documento, "2. Estatísticas gerais")
     adicionar_tabela(
         documento,
-        __import__("pandas").DataFrame([resultados["estatisticas_gerais"]]),
+        pd.DataFrame([resultados["estatisticas_gerais"]]),
         "Tabela 1 – Estatísticas gerais do desempenho"
     )
 
-    adicionar_subtitulo(documento, "3. Desempenho por turma")
+    adicionar_subtitulo(documento, "2. Desempenho por turma")
     adicionar_paragrafo(
         documento,
         gerar_interpretacao_turmas(resultados["analise_por_turma"])
     )
+
     adicionar_tabela(
         documento,
         resultados["analise_por_turma"],
-        "Tabela 2 – Indicadores de desempenho por turma"
+        "Tabela 2 – Indicadores por turma"
     )
 
     if caminhos_graficos.get("media_turma"):
@@ -195,79 +205,62 @@ def gerar_word(resultados, caminhos_graficos, pasta_execucao, config):
             "Figura 1 – Média percentual de acertos por turma."
         )
 
-    adicionar_subtitulo(documento, "4. Desempenho por ciclo formativo")
+    adicionar_subtitulo(documento, "3. Desempenho por ciclo")
     adicionar_paragrafo(
         documento,
         gerar_interpretacao_ciclos(resultados["analise_por_ciclo"])
     )
+
     adicionar_tabela(
         documento,
         resultados["analise_por_ciclo"],
-        "Tabela 3 – Indicadores de desempenho por ciclo formativo"
+        "Tabela 3 – Indicadores por ciclo formativo"
     )
 
-    if caminhos_graficos.get("media_ciclo"):
-        adicionar_figura(
-            documento,
-            caminhos_graficos["media_ciclo"][0],
-            "Figura 2 – Média percentual de acertos por ciclo formativo."
-        )
-
-    adicionar_subtitulo(documento, "5. Grandes áreas do ENAMED")
+    adicionar_subtitulo(documento, "4. Grandes áreas do ENAMED")
     adicionar_paragrafo(
         documento,
         gerar_interpretacao_areas(resultados["analise_por_areas"])
     )
+
     adicionar_tabela(
         documento,
         resultados["analise_por_areas"],
-        "Tabela 4 – Desempenho por grandes áreas do ENAMED"
+        "Tabela 4 – Desempenho por grandes áreas"
     )
 
-    if caminhos_graficos.get("areas"):
-        adicionar_figura(
-            documento,
-            caminhos_graficos["areas"][0],
-            "Figura 3 – Desempenho médio por grande área do ENAMED."
-        )
+    adicionar_tabela(
+        documento,
+        resultados["analise_areas_por_turma"],
+        "Tabela 5 – Desempenho por área e turma"
+    )
 
-    adicionar_subtitulo(documento, "6. Estudantes em risco pedagógico")
+    adicionar_subtitulo(documento, "5. Estudantes em risco")
     adicionar_paragrafo(
         documento,
         gerar_interpretacao_risco(resultados["estudantes_em_risco"])
     )
+
     adicionar_tabela(
         documento,
         resultados["estudantes_em_risco"],
-        "Tabela 5 – Estudantes classificados por risco pedagógico"
+        "Tabela 6 – Classificação de risco pedagógico"
     )
 
-    if caminhos_graficos.get("risco"):
-        adicionar_figura(
-            documento,
-            caminhos_graficos["risco"][0],
-            "Figura 4 – Distribuição dos estudantes por classificação de risco."
-        )
-
-    adicionar_subtitulo(documento, "7. Bonificação acadêmica")
+    adicionar_subtitulo(documento, "6. Bonificação acadêmica")
     adicionar_paragrafo(
         documento,
-        "A bonificação acadêmica foi calculada automaticamente com base no desempenho percentual acima da média da própria turma, conforme as regras parametrizadas no arquivo config.json."
+        gerar_interpretacao_bonus(resultados["bonificacao"])
     )
+
     adicionar_tabela(
         documento,
         resultados["bonificacao"],
-        "Tabela 6 – Bonificação acadêmica por estudante"
+        "Tabela 7 – Bonificação acadêmica por estudante"
     )
 
-    adicionar_subtitulo(documento, "8. Plano de ação pedagógico")
+    adicionar_subtitulo(documento, "7. Plano de ação pedagógico")
     adicionar_paragrafo(documento, gerar_plano_acao())
-
-    adicionar_subtitulo(documento, "9. Encaminhamentos institucionais")
-    adicionar_paragrafo(
-        documento,
-        "Os resultados produzidos pelo ENAMED Performance Analytics devem ser utilizados como evidência institucional para planejamento pedagógico, acompanhamento da aprendizagem, análise de progressão formativa, qualificação das avaliações internas e apoio aos processos de gestão acadêmica baseada em evidências."
-    )
 
     documento.save(caminho_word)
 

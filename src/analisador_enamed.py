@@ -1,41 +1,22 @@
 import pandas as pd
-import numpy as np
-
 from src.utilitarios import identificar_colunas_area, detectar_ciclo
 
 
 def calcular_percentual_acertos(df, config):
-    """
-    Calcula o percentual de acertos com base no número total de questões.
-    """
-
     df = df.copy()
-
-    numero_questoes = config.get("numero_questoes", 100)
-
+    numero_questoes = config.get("numero_questoes", 120)
     df["percentual_acertos"] = (df["acertos"] / numero_questoes) * 100
-
     return df
 
 
 def adicionar_ciclo_formativo(df, config):
-    """
-    Adiciona a coluna de ciclo formativo.
-    """
-
     df = df.copy()
-
     df["ciclo"] = df["periodo"].apply(lambda x: detectar_ciclo(x, config))
-
     return df
 
 
 def calcular_estatisticas_gerais(df):
-    """
-    Calcula estatísticas gerais do simulado ou prova ENAMED.
-    """
-
-    estatisticas = {
+    return {
         "total_estudantes": int(df.shape[0]),
         "media_acertos": round(df["acertos"].mean(), 2),
         "mediana_acertos": round(df["acertos"].median(), 2),
@@ -46,44 +27,30 @@ def calcular_estatisticas_gerais(df):
         "media_percentual": round(df["percentual_acertos"].mean(), 2)
     }
 
-    return estatisticas
-
 
 def gerar_ranking_geral(df):
-    """
-    Gera ranking geral dos estudantes.
-    """
-
-    ranking = df.copy()
-
-    ranking = ranking.sort_values(
+    ranking = df.copy().sort_values(
         by=["acertos", "percentual_acertos"],
         ascending=False
     )
 
     ranking["ranking_geral"] = range(1, len(ranking) + 1)
 
-    colunas = [
-        "ranking_geral",
-        "aluno",
-        "turma",
-        "periodo",
-        "ciclo",
-        "acertos",
-        "percentual_acertos"
+    return ranking[
+        [
+            "ranking_geral",
+            "aluno",
+            "turma",
+            "periodo",
+            "ciclo",
+            "acertos",
+            "percentual_acertos"
+        ]
     ]
-
-    return ranking[colunas]
 
 
 def gerar_ranking_por_turma(df):
-    """
-    Gera ranking por turma.
-    """
-
-    ranking = df.copy()
-
-    ranking = ranking.sort_values(
+    ranking = df.copy().sort_values(
         by=["turma", "acertos", "percentual_acertos"],
         ascending=[True, False, False]
     )
@@ -94,24 +61,20 @@ def gerar_ranking_por_turma(df):
         .astype(int)
     )
 
-    colunas = [
-        "ranking_turma",
-        "aluno",
-        "turma",
-        "periodo",
-        "ciclo",
-        "acertos",
-        "percentual_acertos"
+    return ranking[
+        [
+            "ranking_turma",
+            "aluno",
+            "turma",
+            "periodo",
+            "ciclo",
+            "acertos",
+            "percentual_acertos"
+        ]
     ]
-
-    return ranking[colunas]
 
 
 def analisar_por_turma(df):
-    """
-    Calcula estatísticas por turma/período.
-    """
-
     tabela = (
         df.groupby(["turma", "periodo", "ciclo"])
         .agg(
@@ -126,25 +89,10 @@ def analisar_por_turma(df):
         .reset_index()
     )
 
-    colunas_numericas = [
-        "media_acertos",
-        "mediana_acertos",
-        "desvio_padrao",
-        "minimo",
-        "maximo",
-        "media_percentual"
-    ]
-
-    tabela[colunas_numericas] = tabela[colunas_numericas].round(2)
-
-    return tabela
+    return tabela.round(2)
 
 
 def analisar_por_ciclo(df):
-    """
-    Calcula estatísticas por ciclo formativo.
-    """
-
     tabela = (
         df.groupby("ciclo")
         .agg(
@@ -159,25 +107,10 @@ def analisar_por_ciclo(df):
         .reset_index()
     )
 
-    colunas_numericas = [
-        "media_acertos",
-        "mediana_acertos",
-        "desvio_padrao",
-        "minimo",
-        "maximo",
-        "media_percentual"
-    ]
-
-    tabela[colunas_numericas] = tabela[colunas_numericas].round(2)
-
-    return tabela
+    return tabela.round(2)
 
 
 def identificar_estudantes_em_risco(df, config):
-    """
-    Identifica estudantes abaixo da média da própria turma.
-    """
-
     df = df.copy()
 
     media_turma = df.groupby("turma")["percentual_acertos"].transform("mean")
@@ -187,42 +120,47 @@ def identificar_estudantes_em_risco(df, config):
         df["percentual_acertos"] - media_turma
     ).round(2)
 
+    df["percentual_abaixo_media_turma"] = 0.0
+
+    abaixo = df["diferenca_para_media_turma"] < 0
+
+    df.loc[abaixo, "percentual_abaixo_media_turma"] = (
+        df.loc[abaixo, "diferenca_para_media_turma"].abs()
+    )
+
     df["classificacao_risco"] = "Sem risco"
 
     limite_moderado = config["risco_pedagogico"]["moderado"]
-    limite_critico = config["risco_pedagogico"]["critico"]
+    limite_elevado = config["risco_pedagogico"]["elevado"]
 
     df.loc[
-        (df["diferenca_para_media_turma"] < 0)
-        & (df["diferenca_para_media_turma"] >= -limite_moderado),
+        (df["percentual_abaixo_media_turma"] > 0)
+        & (df["percentual_abaixo_media_turma"] <= limite_moderado),
         "classificacao_risco"
-    ] = "Risco pedagógico moderado"
+    ] = "Risco moderado"
 
     df.loc[
-        df["diferenca_para_media_turma"] <= -limite_critico,
+        df["percentual_abaixo_media_turma"] >= limite_elevado,
         "classificacao_risco"
-    ] = "Risco pedagógico crítico"
+    ] = "Risco elevado"
 
-    colunas = [
-        "aluno",
-        "turma",
-        "periodo",
-        "ciclo",
-        "acertos",
-        "percentual_acertos",
-        "media_percentual_turma",
-        "diferenca_para_media_turma",
-        "classificacao_risco"
+    return df[
+        [
+            "aluno",
+            "turma",
+            "periodo",
+            "ciclo",
+            "acertos",
+            "percentual_acertos",
+            "media_percentual_turma",
+            "diferenca_para_media_turma",
+            "percentual_abaixo_media_turma",
+            "classificacao_risco"
+        ]
     ]
-
-    return df[colunas]
 
 
 def calcular_bonificacao(df, config):
-    """
-    Calcula bonificação acadêmica com base no desempenho acima da média da turma.
-    """
-
     df = df.copy()
 
     media_turma = df.groupby("turma")["percentual_acertos"].transform("mean")
@@ -236,95 +174,114 @@ def calcular_bonificacao(df, config):
     df["numero_disciplinas"] = 0
     df["bonus_total"] = 0.0
     df["classificacao_bonus"] = "Sem bonificação"
+    df["descricao_bonus"] = "Sem bonificação"
 
     for nome_faixa, regra in config["bonificacao"].items():
-        minimo = regra["min"]
-        maximo = regra["max"]
-        bonus = regra["bonus"]
-        disciplinas = regra["disciplinas"]
-
         condicao = (
-            (df["percentual_acima_media_turma"] >= minimo)
-            & (df["percentual_acima_media_turma"] <= maximo)
+            (df["percentual_acima_media_turma"] >= regra["min"])
+            & (df["percentual_acima_media_turma"] <= regra["max"])
         )
 
-        df.loc[condicao, "bonus_por_disciplina"] = bonus
-        df.loc[condicao, "numero_disciplinas"] = disciplinas
-        df.loc[condicao, "bonus_total"] = bonus * disciplinas
+        df.loc[condicao, "bonus_por_disciplina"] = regra["bonus"]
+        df.loc[condicao, "numero_disciplinas"] = regra["disciplinas"]
+        df.loc[condicao, "bonus_total"] = regra["bonus"] * regra["disciplinas"]
         df.loc[condicao, "classificacao_bonus"] = nome_faixa
+        df.loc[condicao, "descricao_bonus"] = regra.get("descricao", "")
 
-    colunas = [
-        "aluno",
-        "turma",
-        "periodo",
-        "ciclo",
-        "acertos",
-        "percentual_acertos",
-        "media_percentual_turma",
-        "percentual_acima_media_turma",
-        "bonus_por_disciplina",
-        "numero_disciplinas",
-        "bonus_total",
-        "classificacao_bonus"
+    return df[
+        [
+            "aluno",
+            "turma",
+            "periodo",
+            "ciclo",
+            "acertos",
+            "percentual_acertos",
+            "media_percentual_turma",
+            "percentual_acima_media_turma",
+            "bonus_por_disciplina",
+            "numero_disciplinas",
+            "bonus_total",
+            "classificacao_bonus",
+            "descricao_bonus"
+        ]
     ]
-
-    return df[colunas]
 
 
 def analisar_por_areas(df, config):
-    """
-    Analisa o desempenho por grandes áreas do ENAMED.
-    As colunas das áreas devem estar configuradas no config.json.
-    """
-
     areas_detectadas = identificar_colunas_area(df, config)
-
     resultados = []
 
     for area, colunas in areas_detectadas.items():
         df_area = df.copy()
 
-        df_area[f"acertos_{area}"] = df_area[colunas].sum(axis=1)
-        df_area[f"percentual_{area}"] = (
-            df_area[f"acertos_{area}"] / len(colunas)
-        ) * 100
+        for coluna in colunas:
+            df_area[coluna] = pd.to_numeric(
+                df_area[coluna],
+                errors="coerce"
+            ).fillna(0)
 
-        resumo_area = {
-            "area": area,
-            "questoes_identificadas": len(colunas),
-            "media_acertos": round(df_area[f"acertos_{area}"].mean(), 2),
-            "media_percentual": round(df_area[f"percentual_{area}"].mean(), 2),
-            "desvio_padrao": round(df_area[f"acertos_{area}"].std(), 2),
-            "minimo": round(df_area[f"acertos_{area}"].min(), 2),
-            "maximo": round(df_area[f"acertos_{area}"].max(), 2)
-        }
+        soma_area = df_area[colunas].sum(axis=1)
 
-        resultados.append(resumo_area)
+        resultados.append(
+            {
+                "area": area,
+                "colunas_identificadas": ", ".join(colunas),
+                "media_acertos": round(soma_area.mean(), 2),
+                "mediana_acertos": round(soma_area.median(), 2),
+                "desvio_padrao": round(soma_area.std(), 2),
+                "minimo": round(soma_area.min(), 2),
+                "maximo": round(soma_area.max(), 2)
+            }
+        )
 
-    if not resultados:
-        return pd.DataFrame()
+    return pd.DataFrame(resultados)
+
+
+def analisar_areas_por_turma(df, config):
+    areas_detectadas = identificar_colunas_area(df, config)
+    resultados = []
+
+    for turma, grupo in df.groupby("turma"):
+        grupo = grupo.copy()
+
+        for area, colunas in areas_detectadas.items():
+            for coluna in colunas:
+                grupo[coluna] = pd.to_numeric(
+                    grupo[coluna],
+                    errors="coerce"
+                ).fillna(0)
+
+            soma_area = grupo[colunas].sum(axis=1)
+
+            resultados.append(
+                {
+                    "turma": turma,
+                    "area": area,
+                    "estudantes": int(grupo.shape[0]),
+                    "media_acertos": round(soma_area.mean(), 2),
+                    "mediana_acertos": round(soma_area.median(), 2),
+                    "desvio_padrao": round(soma_area.std(), 2),
+                    "minimo": round(soma_area.min(), 2),
+                    "maximo": round(soma_area.max(), 2)
+                }
+            )
 
     return pd.DataFrame(resultados)
 
 
 def executar_analise_completa(df, config):
-    """
-    Executa todo o pipeline analítico do ENAMED Performance Analytics.
-    """
-
     df = calcular_percentual_acertos(df, config)
     df = adicionar_ciclo_formativo(df, config)
 
-    resultados = {
+    return {
         "dados_processados": df,
         "estatisticas_gerais": calcular_estatisticas_gerais(df),
         "ranking_geral": gerar_ranking_geral(df),
         "ranking_por_turma": gerar_ranking_por_turma(df),
         "analise_por_turma": analisar_por_turma(df),
         "analise_por_ciclo": analisar_por_ciclo(df),
+        "analise_por_areas": analisar_por_areas(df, config),
+        "analise_areas_por_turma": analisar_areas_por_turma(df, config),
         "estudantes_em_risco": identificar_estudantes_em_risco(df, config),
-        "bonificacao": calcular_bonificacao(df, config),
-        "analise_por_areas": analisar_por_areas(df, config)
+        "bonificacao": calcular_bonificacao(df, config)
     }
-
-    return resultados
