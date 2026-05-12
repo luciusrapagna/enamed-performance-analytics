@@ -1,0 +1,49 @@
+# Ambiente virtual
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Arquivos temporários
+*.tmp
+*.log
+*.bak
+
+# VS Code
+.vscode/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Dados brutos e processados
+data/raw/*
+data/processed/*
+
+# Mantém as pastas no Git
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Saídas geradas automaticamente
+outputs/*
+!outputs/.gitkeep
+
+# Arquivos Word, Excel e figuras geradas
+*.docx
+*.xlsx
+*.xls
+*.csv
+*.png
+*.jpg
+*.jpeg
+*.svg
+
+# Banco de escrita institucional
+banco-escrita/*
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
