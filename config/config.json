@@ -1,0 +1,118 @@
+{
+    "instituicao": "ESCOLA MÉDICA",
+    "nome_relatorio": "Relatório ENAMED Performance Analytics",
+    "numero_questoes": 100,
+
+    "areas": {
+        "Saude Coletiva": [
+            "SC1",
+            "SC2",
+            "SC3",
+            "SC4",
+            "SC5"
+        ],
+
+        "Clinica Medica": [
+            "CM1",
+            "CM2",
+            "CM3",
+            "CM4",
+            "CM5"
+        ],
+
+        "Pediatria": [
+            "PED1",
+            "PED2",
+            "PED3",
+            "PED4",
+            "PED5"
+        ],
+
+        "Cirurgia": [
+            "CIR1",
+            "CIR2",
+            "CIR3",
+            "CIR4",
+            "CIR5"
+        ],
+
+        "Ginecologia e Obstetricia": [
+            "GO1",
+            "GO2",
+            "GO3",
+            "GO4",
+            "GO5"
+        ]
+    },
+
+    "ciclos": {
+        "Basico": [
+            "1",
+            "2",
+            "3",
+            "4"
+        ],
+
+        "Clinico": [
+            "5",
+            "6",
+            "7",
+            "8"
+        ],
+
+        "Internato": [
+            "9",
+            "10",
+            "11",
+            "12"
+        ]
+    },
+
+    "risco_pedagogico": {
+        "moderado": 10,
+        "critico": 11
+    },
+
+    "bonificacao": {
+        "faixa_1": {
+            "min": 1,
+            "max": 9.99,
+            "bonus": 0.1,
+            "disciplinas": 1
+        },
+
+        "faixa_2": {
+            "min": 10,
+            "max": 19.99,
+            "bonus": 0.2,
+            "disciplinas": 2
+        },
+
+        "faixa_3": {
+            "min": 20,
+            "max": 100,
+            "bonus": 0.3,
+            "disciplinas": 3
+        }
+    },
+
+    "graficos": {
+        "dpi": 300,
+        "formato": "png",
+        "salvar_svg": true
+    },
+
+    "excel": {
+        "cor_risco_moderado": "FFF59D",
+        "cor_risco_critico": "EF5350",
+        "cor_bonus": "81C784"
+    },
+
+    "relatorio": {
+        "autor": "ENAMED Performance Analytics",
+        "versao": "1.0",
+        "gerar_graficos": true,
+        "gerar_tabelas": true,
+        "gerar_ranking": true
+    }
+}
